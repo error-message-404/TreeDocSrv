@@ -15,8 +15,8 @@ app.use(cors({
 
 // 2. Middleware për Payload të madh (Base64 Imazhe)
 // Rritja e limitit në 50mb siguron që asnjë foto e telefonit të mos bllokohet
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+app.use(bodyParser.json({ limit: '100mb' }));
+app.use(bodyParser.urlencoded({ limit: '100mb', extended: true }));
 
 // 3. Database Connection
 const mongoURI = process.env.MONGO_URI || process.env.MONGO_USR;
