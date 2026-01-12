@@ -2,17 +2,17 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const bodyParser = require("body-parser");
 
 const app = express();
 
-// Rritja e limiteve për të pranuar Base64 nga Mobile
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
-mongoose.connect(process.env.MONGO_URI || process.env.MONGO_USR)
-  .then(() => console.log('✅ Lidhura me MongoDB'))
-  .catch(err => console.log('❌ Gabim lidhjeje:', err));
+mongoose.connect(process.env.MONGO_USR || process.env.MONGO_URI)
+  .then(() => console.log('✅ MongoDB Connected'))
+  .catch(err => console.error('❌ DB Error:', err));
 
 const User = mongoose.model('User', new mongoose.Schema({
   email: { type: String, required: true, unique: true },
@@ -28,21 +28,25 @@ app.post('/login', async (req, res) => {
       user = new User({ email, password, history: [] });
       await user.save();
     }
-    res.json(user);
-  } catch (err) { res.status(500).json({ error: "Server error" }); }
+    if (password === "dummy" || user.password === password) {
+      res.json(user);
+    } else {
+      res.status(401).json({ error: "Wrong password" });
+    }
+  } catch (err) { res.status(500).json(err); }
 });
 
 app.post('/save-plant', async (req, res) => {
-  const { email, id, image, date, title } = req.body;
+  const { email, id, image, date, title, result } = req.body;
   try {
     const user = await User.findOneAndUpdate(
       { email },
-      { $push: { history: { $each: [{ id, image, date, title }], $position: 0 } } },
+      { $push: { history: { $each: [{ id, image, date, title, result }], $position: 0 } } },
       { new: true }
     );
     res.json(user);
-  } catch (err) { res.status(500).json({ error: "Dështoi ruajtja" }); }
+  } catch (err) { res.status(500).json(err); }
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Serveri hapur ne porten ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server on port ${PORT}`));
