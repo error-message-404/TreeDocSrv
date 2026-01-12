@@ -1,15 +1,17 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const bodyParser = require('body-parser');
 
 const app = express();
 
 // 1. Middleware
-app.use(express.json());
-app.use(cors()); // Allows your Website and Mobile app to connect
+// Rritja e limitit është hapi kyç për imazhet nga Mobile
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+app.use(cors());
 
 // 2. Database Connection
-// This uses the "Key" you created in the Render Environment tab
 const mongoURI = process.env.MONGO_URI; 
 
 mongoose.connect(mongoURI)
@@ -23,7 +25,7 @@ const userSchema = new mongoose.Schema({
   history: [
     {
       id: String,
-      image: String,
+      image: String, // Stringu Base64 i imazhit
       date: String,
       title: String
     }
@@ -34,7 +36,6 @@ const User = mongoose.model('User', userSchema);
 
 // 4. Routes
 
-// Health Check (To see if server is alive in browser)
 app.get('/', (req, res) => {
   res.send('Server is alive and healthy on Render!');
 });
@@ -45,17 +46,17 @@ app.post('/login', async (req, res) => {
   try {
     let user = await User.findOne({ email });
     if (!user) {
-      // Create new user if they don't exist
       user = new User({ email, password, history: [] });
       await user.save();
     }
+    // Kthejmë përdoruesin bashkë me historikun
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: "Server error during login" });
   }
 });
 
-// Save Plant Route
+// Save Plant Route (Përdoret nga Mobile)
 app.post('/save-plant', async (req, res) => {
   const { email, id, image, date, title } = req.body;
   try {
@@ -70,9 +71,7 @@ app.post('/save-plant', async (req, res) => {
   }
 });
 
-// 5. Start Server
-// Use process.env.PORT for Render, or 10000 for local testing
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server flawlessly running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
