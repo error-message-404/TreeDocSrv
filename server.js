@@ -5,64 +5,87 @@ const cors = require("cors");
 const bodyParser = require("body-parser");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// 1. Middleware - DUHET limit 10mb për imazhet Base64
+// 1. Middleware
+// KRITIKE: Rritja e limitit për të pranuar imazhet e gjata Base64 nga Mobile
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
-// 2. MongoDB connection
-mongoose
-  .connect(process.env.MONGO_USR)
-  .then(() => console.log("Connected to MongoDB"))
-  .catch((err) => console.error("MongoDB error:", err));
+// 2. Database Connection
+// Sigurohu që MONGO_URI është i saktë në Render -> Settings -> Environment
+const mongoURI = process.env.MONGO_URI || process.env.MONGO_USR; 
 
-// 3. User schema - Duhet të përfshijë 'history'
+mongoose.connect(mongoURI)
+  .then(() => console.log('✅ MongoDB Connected!'))
+  .catch(err => console.error('❌ MongoDB Connection Error:', err));
+
+// 3. User Schema & Model
+// Përfshin fushën 'history' ashtu siç ruhet nga aplikacioni Mobile
 const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   history: [
     {
       id: String,
-      image: String, // Stringu i gjatë i imazhit
+      image: String, // Këtu ruhet stringu Base64 i fotos
       date: String,
-      title: String
+      title: String,
+      result: String
     }
   ]
 });
 
-const User = mongoose.model("User", userSchema);
+const User = mongoose.model('User', userSchema);
 
 // 4. Routes
-app.post("/signup", async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const user = new User({ username, password, history: [] });
-    await user.save();
-    res.status(201).json({ message: "User created" });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
+
+// Health Check
+app.get('/', (req, res) => {
+  res.send('Server is running perfectly!');
 });
 
-app.post("/login", async (req, res) => {
-  const { username, email, password } = req.body;
-  const targetUser = username || email; // Pranon të dyja
-
+// Login / Register Route
+app.post('/login', async (req, res) => {
+  const { email, password } = req.body;
   try {
-    const user = await User.findOne({ username: targetUser });
-    if (!user) return res.status(404).json({ error: "User not found" });
-
-    // Login me password ose dummy refresh
-    if (password === "dummy" || user.password === password) {
-      res.json({ message: "Success", history: user.history || [] });
-    } else {
-      res.status(401).json({ error: "Wrong password" });
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      // Krijo përdorues të ri nëse nuk ekziston (për herë të parë)
+      user = new User({ email, password, history: [] });
+      await user.save();
+      return res.json(user);
     }
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+
+    // Lejo login-in normal ose refresh-in nga Web me fjalëkalimin "dummy"
+    if (password === "dummy" || user.password === password) {
+      res.json(user);
+    } else {
+      res.status(401).json({ error: "Fjalëkalim i gabuar" });
+    }
+  } catch (err) {
+    res.status(500).json({ error: "Gabim në server gjatë login-it" });
   }
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Save Plant Route (Përdoret kryesisht nga Mobile)
+app.post('/save-plant', async (req, res) => {
+  const { email, id, image, date, title, result } = req.body;
+  try {
+    const user = await User.findOneAndUpdate(
+      { email },
+      { $push: { history: { $each: [{ id, image, date, title, result }], $position: 0 } } },
+      { new: true }
+    );
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: "Dështoi ruajtja e bimës" });
+  }
+});
+
+// 5. Start Server
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
