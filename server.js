@@ -6,52 +6,31 @@ const multer = require('multer');
 const path = require('path');
 
 const app = express();
+const API_BASE = process.env.API_BASE || 'https://treedocsrv.onrender.com';
 
 app.use(cors());
 app.use(express.json());
 
-// 📂 Serve uploaded images
+// --- Serve uploaded images ---
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// 🗄️ MongoDB
+// --- MongoDB setup ---
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected'))
   .catch(err => console.error('❌ DB Error:', err));
 
-// 👤 Schema
+// --- User schema ---
 const User = mongoose.model(
   'User',
   new mongoose.Schema({
     email: { type: String, required: true, unique: true },
-    password: { type: String, default: 'dummy' },
+    password: { type: String, required: true },
     history: Array
   })
 );
 
-// 🔐 Login
-app.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-
-  try {
-    let user = await User.findOne({ email });
-
-    if (!user) {
-      user = new User({ email, password, history: [] });
-      await user.save();
-    }
-
-    if (password === 'dummy' || user.password === password) {
-      res.json(user);
-    } else {
-      res.status(401).json({ error: 'Wrong password' });
-    }
-  } catch (err) {
-    res.status(500).json(err);
-  }
-});
-
-// 📸 Multer setup
+// --- Multer setup for file uploads ---
 const storage = multer.diskStorage({
   destination: 'uploads/',
   filename: (req, file, cb) => {
@@ -61,14 +40,67 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// 🌱 Save plant (FILE UPLOAD)
+// ------------------ AUTH ROUTES ------------------
+
+// --- REGISTER ---
+app.post('/register', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  try {
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(409).json({ error: 'User already exists.' });
+    }
+
+    const newUser = new User({ email, password, history: [] });
+    await newUser.save();
+
+    res.status(201).json({ message: 'User created successfully.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error during registration.' });
+  }
+});
+
+// --- LOGIN ---
+app.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    if (user.password !== password) return res.status(401).json({ error: 'Incorrect password.' });
+
+    // Map history image paths to full URLs
+    const mappedHistory = (user.history || []).map(item => ({
+      ...item,
+      image: item.image ? `${API_BASE}${item.image}` : null
+    }));
+
+    res.json({ ...user.toObject(), history: mappedHistory });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error during login.' });
+  }
+});
+
+// ------------------ PLANT / IMAGE ROUTE ------------------
+
+// Upload plant image
 app.post('/save-plant', upload.single('image'), async (req, res) => {
   try {
     const { email, id, date, title, result } = req.body;
 
-    if (!req.file) {
-      return res.status(400).json({ error: 'No image uploaded' });
-    }
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded.' });
 
     const imagePath = `/uploads/${req.file.filename}`;
 
@@ -85,15 +117,19 @@ app.post('/save-plant', upload.single('image'), async (req, res) => {
       { new: true }
     );
 
-    res.json(user);
+    // Map images to full URLs before sending
+    const mappedHistory = (user.history || []).map(item => ({
+      ...item,
+      image: item.image ? `${API_BASE}${item.image}` : null
+    }));
+
+    res.json({ ...user.toObject(), history: mappedHistory });
   } catch (err) {
     console.error(err);
-    res.status(500).json(err);
+    res.status(500).json({ error: 'Server error during plant upload.' });
   }
 });
 
-// 🚀 Start
+// ------------------ START SERVER ------------------
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, '0.0.0.0', () =>
-  console.log(`🚀 Server running on port ${PORT}`)
-);
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT}`));
